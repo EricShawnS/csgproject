@@ -41,6 +41,12 @@ import { Badge, Button, Card, Input, Modal, Select, Table, Textarea, Toast } fro
 
 const ICON_PRESETS = [
   {
+    key: 'calendar',
+    label: 'General',
+    Icon: CalendarDays,
+    badgeClass: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+  },
+  {
     key: 'trophy',
     label: 'Sports',
     Icon: Trophy,
@@ -81,12 +87,6 @@ const ICON_PRESETS = [
     label: 'Social / Party',
     Icon: PartyPopper,
     badgeClass: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',
-  },
-  {
-    key: 'calendar',
-    label: 'General',
-    Icon: CalendarDays,
-    badgeClass: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
   },
 ];
 
@@ -1287,37 +1287,18 @@ export default function EventManagement() {
             )}
           </div>
 
-          {/* Event Icon Picker */}
+         {/* Event Icon Picker */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-medium text-ink dark:text-slate-200">
                 Event Icon
               </label>
               <span className="text-[11px] text-mut dark:text-slate-400">
-                {form.icon_key === 'auto'
-                  ? `Auto: ${autoDetectedIcon.label}`
-                  : `Selected: ${getEventIconMeta(form.icon_key).label}`}
+                Selected: {getEventIconMeta(form.icon_key).label}
               </span>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, icon_key: 'auto' })}
-                className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] font-medium transition ${
-                  form.icon_key === 'auto'
-                    ? 'border-indigo-400 bg-indigo-500/20 text-white'
-                    : 'border-line bg-soft/40 text-ink hover:bg-soft/80 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300'
-                }`}
-                title="Automatically choose icon from event name/description"
-              >
-                <AutoDetectedIconComponent className="h-4 w-4 text-indigo-400" />
-                <span className="inline-flex items-center gap-0.5">
-                  <Sparkles className="h-2.5 w-2.5" />
-                  Auto
-                </span>
-              </button>
-
               {ICON_PRESETS.map((preset) => {
                 const PresetIcon = preset.Icon;
                 const active = form.icon_key === preset.key;
