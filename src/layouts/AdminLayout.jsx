@@ -25,15 +25,15 @@ export default function AdminLayout() {
   }, [currentMatch?.pathname]);
 
   return (
-    <div className="flex min-h-screen bg-white text-ink dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-screen overflow-hidden bg-white text-ink dark:bg-slate-950 dark:text-slate-100">
       <AdminSidebar
         pendingExcusesCount={pendingCount}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
       />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <AdminHeader title={pageTitle} onOpenMenu={() => setMobileOpen(true)} />
-        <main className="flex-1 p-5">
+        <main className="min-h-0 flex-1 overflow-y-auto p-5">
           <Outlet context={{ refreshPendingCount }} />
         </main>
       </div>
