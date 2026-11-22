@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Camera, Trash2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Button, Card, Input, Select, Toast } from '../../components/ui';
@@ -6,9 +7,13 @@ import { Button, Card, Input, Select, Toast } from '../../components/ui';
 const PREFS_KEY = 'csg_admin_settings_v1';
 
 export default function Settings() {
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, refreshProfile } = useAuth();
 
   const [fullName, setFullName] = useState('');
+  const [position, setPosition] = useState('');
+  const [department, setDepartment] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
 
   const [newPassword, setNewPassword] = useState('');
@@ -40,9 +45,38 @@ export default function Settings() {
     setTimeout(() => setToast(''), 2800);
   };
 
+  const syncFromDb = useCallback(async () => {
+    if (!user?.id) return;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!error && data) {
+      setFullName(data.full_name || '');
+      setPosition(data.position || '');
+      setDepartment(data.department || '');
+      setAvatarUrl(data.avatar_url || '');
+    }
+
+    if (typeof refreshProfile === 'function') {
+      await refreshProfile();
+    }
+  }, [user?.id, refreshProfile]);
+
   useEffect(() => {
-    setFullName(profile?.full_name || '');
+    if (profile) {
+      setFullName((prev) => prev || profile.full_name || '');
+      setPosition((prev) => prev || profile.position || '');
+      setDepartment((prev) => prev || profile.department || '');
+      setAvatarUrl((prev) => prev || profile.avatar_url || '');
+    }
   }, [profile]);
+
+  useEffect(() => {
+    syncFromDb();
+  }, [syncFromDb]);
 
   const applyTheme = (themeValue) => {
     const isDark =
@@ -61,6 +95,86 @@ export default function Settings() {
     showToast('Preferences saved.');
   };
 
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Image must be 2 MB or smaller.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const filePath = `${user.id}/avatar-${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('avatars').getPublicUrl(filePath);
+
+      const { data: updatedRow, error: dbError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id)
+        .select('avatar_url')
+        .single();
+
+      if (dbError) throw dbError;
+      if (!updatedRow?.avatar_url) {
+        throw new Error('Profile row was not updated. Check RLS policy on profiles.');
+      }
+
+      setAvatarUrl(updatedRow.avatar_url);
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
+      showToast('Profile picture saved.');
+    } catch (err) {
+      showToast(err.message || 'Could not upload profile picture.');
+    } finally {
+      setUploadingAvatar(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!user?.id) return;
+    setUploadingAvatar(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: null })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setAvatarUrl('');
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
+      showToast('Profile picture removed.');
+    } catch (err) {
+      showToast(err.message || 'Could not remove profile picture.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (!user?.id || !fullName.trim()) return;
@@ -68,9 +182,17 @@ export default function Settings() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ full_name: fullName.trim(), updated_at: new Date().toISOString() })
+        .update({
+          full_name: fullName.trim(),
+          position: position.trim() || null,
+          department: department.trim() || null,
+          avatar_url: avatarUrl || null,
+        })
         .eq('id', user.id);
       if (error) throw error;
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
       showToast('Profile updated.');
     } catch (err) {
       showToast(err.message || 'Could not update profile.');
@@ -105,8 +227,58 @@ export default function Settings() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <Card title="Profile Settings" subtitle="Update your display name and review account role.">
-        <form onSubmit={handleSaveProfile} className="space-y-3">
+      <Card
+        title="Profile Settings"
+        subtitle="Customize your profile picture, display name, position, and department."
+      >
+        <form onSubmit={handleSaveProfile} className="space-y-4">
+          <div className="flex flex-wrap items-center gap-4 border-b border-line pb-4 dark:border-slate-800">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-line bg-soft dark:border-slate-700 dark:bg-slate-800">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={fullName || 'Admin profile'}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <User className="h-7 w-7 text-mut dark:text-slate-400" />
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-soft dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700">
+                  <Camera className="h-3.5 w-3.5" />
+                  {uploadingAvatar ? 'Uploading...' : 'Upload Photo'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploadingAvatar}
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                {avatarUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={uploadingAvatar}
+                    onClick={handleRemoveAvatar}
+                    className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-mut dark:text-slate-400">
+                JPG, PNG, or WebP up to 2 MB.
+              </p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input
               label="Full Name"
@@ -120,12 +292,30 @@ export default function Settings() {
               value={user?.email || profile?.email || ''}
               disabled
             />
+            <Input
+              label="Position"
+              id="set-position"
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              placeholder="e.g., System Administrator / Adviser"
+            />
+            <Input
+              label="Department"
+              id="set-department"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              placeholder="e.g., CSG / BSIT"
+            />
           </div>
+
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-mut">
-              Role: <strong className="uppercase text-ink dark:text-white">{role || 'admin'}</strong>
+              Role:{' '}
+              <strong className="uppercase text-ink dark:text-white">
+                {role || profile?.role || 'admin'}
+              </strong>
             </span>
-            <Button type="submit" disabled={savingProfile}>
+            <Button type="submit" disabled={savingProfile || uploadingAvatar}>
               {savingProfile ? 'Saving...' : 'Save Profile'}
             </Button>
           </div>

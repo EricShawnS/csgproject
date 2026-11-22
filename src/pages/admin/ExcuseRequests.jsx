@@ -1,11 +1,117 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Check, X, FileCheck2 } from 'lucide-react';
+import { Check, X, FileCheck2, ExternalLink } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { fetchExcuseRequests, decideExcuseRequest } from '../../services/excuseRequestsService';
 import { Badge, Button, Card, Textarea, Toast } from '../../components/ui';
 
 const TABS = ['Pending', 'Approved', 'Rejected', 'All'];
+const EVIDENCE_BUCKETS = ['excuse-evidence', 'excuse_documents', 'documents', 'avatars'];
+
+function getRawEvidenceRef(reqItem) {
+  return (
+    reqItem?.document_url ||
+    reqItem?.evidence_url ||
+    reqItem?.attachment_url ||
+    reqItem?.file_url ||
+    reqItem?.storage_path ||
+    ''
+  );
+}
+
+function getEvidenceLabel(reqItem) {
+  if (reqItem?.document_name) return reqItem.document_name;
+  const raw = getRawEvidenceRef(reqItem);
+  if (!raw) return '';
+  const clean = raw.split('?')[0];
+  return decodeURIComponent(clean.split('/').pop() || 'Attached Evidence');
+}
+
+function isImageFile(nameOrUrl = '') {
+  return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(nameOrUrl);
+}
+
+function EvidenceAttachment({ reqItem }) {
+  const [resolvedUrl, setResolvedUrl] = useState('');
+  const [loadingUrl, setLoadingUrl] = useState(false);
+
+  const rawRef = getRawEvidenceRef(reqItem);
+  const label = getEvidenceLabel(reqItem);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedUrl('');
+
+    if (!rawRef) return;
+
+    if (/^https?:\/\//i.test(rawRef)) {
+      setResolvedUrl(rawRef);
+      return;
+    }
+
+    setLoadingUrl(true);
+    (async () => {
+      for (const bucket of EVIDENCE_BUCKETS) {
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(rawRef, 60 * 15);
+        if (!cancelled && !error && data?.signedUrl) {
+          setResolvedUrl(data.signedUrl);
+          break;
+        }
+      }
+      if (!cancelled) setLoadingUrl(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rawRef]);
+
+  if (!label && !rawRef) return null;
+
+  const showImage = isImageFile(label || resolvedUrl || rawRef);
+
+  return (
+    <div className="mt-2.5 space-y-2 rounded-xl border border-line bg-soft/40 p-2.5 dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-ink dark:text-slate-200">
+          <FileCheck2 className="h-4 w-4 shrink-0 text-admin-active" />
+          <span>Supporting Document: {label || 'Attached File'}</span>
+        </div>
+
+        {resolvedUrl ? (
+          <a
+            href={resolvedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-soft dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-700"
+          >
+            View Evidence
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : loadingUrl ? (
+          <span className="text-[11px] text-mut dark:text-slate-400">Loading file...</span>
+        ) : (
+          <span className="text-[11px] text-mut dark:text-slate-400">
+            No file link attached on record
+          </span>
+        )}
+      </div>
+
+      {resolvedUrl && showImage && (
+        <div className="overflow-hidden rounded-lg border border-line bg-white dark:border-slate-700 dark:bg-slate-900">
+          <img
+            src={resolvedUrl}
+            alt={label || 'Excuse evidence'}
+            className="max-h-72 w-full object-contain"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ExcuseRequests() {
   const { refreshPendingCount } = useOutletContext() || {};
@@ -138,12 +244,7 @@ export default function ExcuseRequests() {
                   </p>
                 )}
 
-                {reqItem.document_name && (
-                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs text-ink dark:border-slate-700 dark:text-slate-200">
-                    <FileCheck2 className="h-3.5 w-3.5 text-admin-active" />
-                    <span>Supporting Document: {reqItem.document_name}</span>
-                  </div>
-                )}
+                <EvidenceAttachment reqItem={reqItem} />
 
                 <div className="mt-3">
                   <Textarea

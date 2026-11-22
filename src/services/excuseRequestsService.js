@@ -1,28 +1,46 @@
 import { supabase } from '../lib/supabase';
 import { logActivity } from './ActivityLogService';
 
+const EXCUSE_SELECT = `
+  id,
+  student_id,
+  event_id,
+  reason,
+  explanation,
+  document_name,
+  document_url,
+  evidence_url,
+  status,
+  remarks,
+  decided_by,
+  decided_on,
+  created_at,
+  students ( id, full_name, course, year_level, section ),
+  events ( id, name, event_date )
+`;
+
+function normalizeRequest(row) {
+  if (!row) return row;
+  const resolvedUrl =
+    row.document_url ||
+    row.evidence_url ||
+    (/^https?:\/\//i.test(row.document_name || '') ? row.document_name : '') ||
+    '';
+
+  return {
+    ...row,
+    evidence_url: resolvedUrl,
+  };
+}
+
 export async function fetchExcuseRequests() {
   const { data, error } = await supabase
     .from('excuse_requests')
-    .select(`
-      id,
-      student_id,
-      event_id,
-      reason,
-      explanation,
-      document_name,
-      status,
-      remarks,
-      decided_by,
-      decided_on,
-      created_at,
-      students ( id, full_name, course, year_level, section ),
-      events ( id, name, event_date )
-    `)
+    .select(EXCUSE_SELECT)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data || [];
+  return (data || []).map(normalizeRequest);
 }
 
 export async function decideExcuseRequest(request, decision, remarks, actor) {
@@ -38,21 +56,7 @@ export async function decideExcuseRequest(request, decision, remarks, actor) {
       decided_on: decidedOn,
     })
     .eq('id', request.id)
-    .select(`
-      id,
-      student_id,
-      event_id,
-      reason,
-      explanation,
-      document_name,
-      status,
-      remarks,
-      decided_by,
-      decided_on,
-      created_at,
-      students ( id, full_name, course, year_level, section ),
-      events ( id, name, event_date )
-    `)
+    .select(EXCUSE_SELECT)
     .single();
 
   if (error) throw error;
@@ -65,7 +69,6 @@ export async function decideExcuseRequest(request, decision, remarks, actor) {
           event_id: request.event_id,
           student_id: request.student_id,
           status: 'Excused',
-          recorded_time: new Date().toTimeString().slice(0, 5),
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'event_id,student_id' }
@@ -98,5 +101,5 @@ export async function decideExcuseRequest(request, decision, remarks, actor) {
     target_path: '/officer/attendance',
   });
 
-  return data;
+  return normalizeRequest(data);
 }
