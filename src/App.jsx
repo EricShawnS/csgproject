@@ -12,6 +12,7 @@ const EventManagement = lazy(() => import('./pages/admin/EventManagement'));
 const ExcuseRequests = lazy(() => import('./pages/admin/ExcuseRequests'));
 const AdminAnnouncements = lazy(() => import('./pages/admin/Announcements'));
 const StudentRecords = lazy(() => import('./pages/admin/StudentRecords'));
+const ManageOfficers = lazy(() => import('./pages/admin/ManageOfficers'));
 const AdminReports = lazy(() => import('./pages/admin/Reports'));
 const Notifications = lazy(() => import('./pages/admin/Notifications'));
 const ActivityLog = lazy(() => import('./pages/admin/ActivityLog'));
@@ -82,6 +83,7 @@ const router = createBrowserRouter([
       { path: 'excuse-requests', handle: { title: 'Excuse Requests' }, element: <LazyPage><ExcuseRequests /></LazyPage> },
       { path: 'announcements', handle: { title: 'Announcements' }, element: <LazyPage><AdminAnnouncements /></LazyPage> },
       { path: 'students', handle: { title: 'Student Records' }, element: <LazyPage><StudentRecords /></LazyPage> },
+      { path: 'officers', handle: { title: 'Manage Officers' }, element: <LazyPage><ManageOfficers /></LazyPage> },
       { path: 'reports', handle: { title: 'Reports' }, element: <LazyPage><AdminReports /></LazyPage> },
       { path: 'notifications', handle: { title: 'Notifications' }, element: <LazyPage><Notifications /></LazyPage> },
       { path: 'activity-log', handle: { title: 'Activity Log' }, element: <LazyPage><ActivityLog /></LazyPage> },

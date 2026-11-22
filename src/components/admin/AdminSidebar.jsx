@@ -5,6 +5,7 @@ import {
   FileText,
   Megaphone,
   Users,
+  UserCog,
   BarChart3,
   Bell,
   ScrollText,
@@ -22,6 +23,7 @@ const ADMIN_NAV_ITEMS = [
   { to: '/admin/excuse-requests', label: 'Excuse Requests', icon: FileText, showPendingBadge: true },
   { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
   { to: '/admin/students', label: 'Student Records', icon: Users },
+  { to: '/admin/officers', label: 'Manage Officers', icon: UserCog },
   { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { to: '/admin/notifications', label: 'Notifications', icon: Bell },
   { to: '/admin/activity-log', label: 'Activity Log', icon: ScrollText },
@@ -40,7 +42,7 @@ export default function AdminSidebar({ pendingExcusesCount = 0, mobileOpen = fal
 
   const navContent = (
     <aside className="flex h-full w-[230px] shrink-0 flex-col bg-admin-aside px-2.5 py-3.5 text-white">
-      <div className="flex items-center justify-between px-1.5 pb-7">
+      <div className="flex shrink-0 items-center justify-between px-1.5 pb-5">
         <div className="flex items-center gap-2.5">
           <span className="grid h-[34px] w-[34px] place-items-center rounded-full border-2 border-white text-sm">
             <Star className="h-4 w-4" />
@@ -64,11 +66,11 @@ export default function AdminSidebar({ pendingExcusesCount = 0, mobileOpen = fal
         )}
       </div>
 
-      <h4 className="mx-1.5 mb-2 text-xs font-semibold uppercase tracking-wider text-admin-heading">
+      <h4 className="mx-1.5 mb-2 shrink-0 text-xs font-semibold uppercase tracking-wider text-admin-heading">
         Main Menu
       </h4>
 
-      <nav className="flex flex-1 flex-col gap-0.5">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-0.5">
         {ADMIN_NAV_ITEMS.map(({ to, label, icon: Icon, end, showPendingBadge }) => (
           <NavLink
             key={to}
@@ -76,7 +78,7 @@ export default function AdminSidebar({ pendingExcusesCount = 0, mobileOpen = fal
             end={end}
             onClick={onClose}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-[10px] border border-transparent px-3 py-[9px] text-[15px] transition-colors ${
+              `flex shrink-0 items-center gap-2.5 rounded-[10px] border border-transparent px-3 py-[9px] text-[15px] transition-colors ${
                 isActive
                   ? 'bg-admin-active font-medium text-white'
                   : 'text-admin-nav hover:bg-admin-hover hover:text-white'
@@ -92,24 +94,24 @@ export default function AdminSidebar({ pendingExcusesCount = 0, mobileOpen = fal
             )}
           </NavLink>
         ))}
+      </nav>
 
-        <div className="flex-1" />
-
+      <div className="mt-2 shrink-0 border-t border-white/10 pt-2">
         <button
           type="button"
           onClick={handleSignOut}
-          className="mt-2 flex w-full items-center gap-2.5 rounded-[10px] border border-transparent px-3 py-[9px] text-left text-[15px] text-admin-nav transition-colors hover:bg-admin-hover hover:text-white"
+          className="flex w-full items-center gap-2.5 rounded-[10px] border border-transparent px-3 py-[9px] text-left text-[15px] text-admin-nav transition-colors hover:bg-admin-hover hover:text-white"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           <span>Sign Out</span>
         </button>
-      </nav>
+      </div>
     </aside>
   );
 
   return (
     <>
-      <div className="hidden md:block">{navContent}</div>
+      <div className="hidden md:flex md:h-full">{navContent}</div>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
           <div className="fixed inset-0 bg-black/40" onClick={onClose} />

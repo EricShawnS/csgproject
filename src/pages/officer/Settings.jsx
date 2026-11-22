@@ -19,7 +19,7 @@ const DEFAULT_PREFS = {
 };
 
 export default function Settings() {
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, refreshProfile } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
@@ -74,6 +74,9 @@ export default function Settings() {
         .update({ full_name: fullName.trim(), updated_at: new Date().toISOString() })
         .eq('id', user.id);
       if (error) throw error;
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
       setEditingProfile(false);
       showToast('Profile saved.');
     } catch (err) {
@@ -95,8 +98,24 @@ export default function Settings() {
     }
     setSavingPw(true);
     try {
+      const nowIso = new Date().toISOString();
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
+
+      // Clear the forced password-change flag if the officer just updated their password
+      await supabase
+        .from('profiles')
+        .update({
+          must_change_password: false,
+          password_updated_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', user.id);
+
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
+
       setNewPassword('');
       setConfirmPassword('');
       showToast('Password updated.');
@@ -133,19 +152,35 @@ export default function Settings() {
                 value={user?.email || profile?.email || 'officer@csg.com'}
                 disabled
               />
+              <Input
+                label="Officer Position"
+                id="off-position"
+                value={profile?.position || 'CSG Officer'}
+                disabled
+              />
+              <Input
+                label="Department / Course"
+                id="off-department"
+                value={profile?.department || '—'}
+                disabled
+              />
             </div>
             <Button
+              type="button"
               variant="secondary"
               size="sm"
               className="mt-5"
-              onClick={() => setEditingProfile((prev) => !prev)}
+              onClick={() => {
+                setFullName(profile?.full_name || 'CSG Officer');
+                setEditingProfile((prev) => !prev);
+              }}
             >
               {editingProfile ? 'Cancel' : 'Edit Profile'}
             </Button>
           </div>
           <div className="flex items-center justify-between pt-1">
             <span className="rounded-full border border-line bg-soft px-3 py-0.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
-              {role || 'Officer'}
+              {role || profile?.role || 'Officer'}
             </span>
             {editingProfile && (
               <Button type="submit" size="sm" disabled={savingProfile}>
