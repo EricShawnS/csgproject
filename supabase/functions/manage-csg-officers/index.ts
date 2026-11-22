@@ -70,12 +70,19 @@ Deno.serve(async (req) => {
       const resolvedFullName = full_name
         ? String(full_name).trim()
         : normalizedEmail.split('@')[0];
+      const resolvedPosition = position ? String(position).trim() : null;
+      const resolvedDepartment = department ? String(department).trim() : null;
 
       const { data: created, error: createError } = await adminClient.auth.admin.createUser({
         email: normalizedEmail,
         password,
         email_confirm: true,
-        user_metadata: { role: 'officer', full_name: resolvedFullName },
+        user_metadata: {
+          role: 'officer',
+          full_name: resolvedFullName,
+          position: resolvedPosition,
+          department: resolvedDepartment,
+        },
       });
 
       if (createError || !created.user) {
@@ -89,8 +96,8 @@ Deno.serve(async (req) => {
             id: created.user.id,
             email: normalizedEmail,
             full_name: resolvedFullName,
-            position: position ? String(position).trim() : null,
-            department: department ? String(department).trim() : null,
+            position: resolvedPosition,
+            department: resolvedDepartment,
             role: 'officer',
             must_change_password: Boolean(require_password_change),
             password_updated_at: new Date().toISOString(),
@@ -101,6 +108,79 @@ Deno.serve(async (req) => {
       if (profileError) throw profileError;
 
       return jsonResponse({ user: created.user });
+    }
+
+    if (action === 'update_officer') {
+      const {
+        user_id,
+        full_name,
+        position,
+        department,
+        must_change_password,
+      } = body;
+
+      if (!user_id) {
+        return jsonResponse({ error: 'user_id is required' }, 400);
+      }
+
+      const { data: existingProfile, error: existingErr } = await adminClient
+        .from('profiles')
+        .select('id, email, full_name, role')
+        .eq('id', user_id)
+        .eq('role', 'officer')
+        .single();
+
+      if (existingErr || !existingProfile) {
+        return jsonResponse({ error: 'Officer profile not found' }, 404);
+      }
+
+      const fallbackName =
+        existingProfile.full_name ||
+        existingProfile.email?.split('@')[0] ||
+        'CSG Officer';
+      const resolvedFullName =
+        typeof full_name === 'string' && full_name.trim()
+          ? full_name.trim()
+          : fallbackName;
+      const resolvedPosition =
+        typeof position === 'string' && position.trim()
+          ? position.trim()
+          : null;
+      const resolvedDepartment =
+        typeof department === 'string' && department.trim()
+          ? department.trim()
+          : null;
+
+      const updatePayload: Record<string, unknown> = {
+        full_name: resolvedFullName,
+        position: resolvedPosition,
+        department: resolvedDepartment,
+      };
+
+      if (typeof must_change_password === 'boolean') {
+        updatePayload.must_change_password = must_change_password;
+      }
+
+      const { data: updatedProfile, error: profileError } = await adminClient
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', user_id)
+        .eq('role', 'officer')
+        .select('*')
+        .single();
+
+      if (profileError) throw profileError;
+
+      await adminClient.auth.admin.updateUserById(user_id, {
+        user_metadata: {
+          role: 'officer',
+          full_name: resolvedFullName,
+          position: resolvedPosition,
+          department: resolvedDepartment,
+        },
+      });
+
+      return jsonResponse({ profile: updatedProfile });
     }
 
     if (action === 'change_password') {

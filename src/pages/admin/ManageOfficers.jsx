@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Users,
   UserPlus,
+  Pencil,
   KeyRound,
   Trash2,
   Search,
@@ -50,6 +51,15 @@ export default function ManageOfficers() {
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [showCreatePass, setShowCreatePass] = useState(false);
 
+  // Edit Officer Profile Modal
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    position: '',
+    department: '',
+    must_change_password: false,
+  });
+
   // Change Password Modal (Direct New Password + Confirm)
   const [passTarget, setPassTarget] = useState(null);
   const [newPassword, setNewPassword] = useState('');
@@ -89,8 +99,20 @@ export default function ManageOfficers() {
   }, []);
 
   const invokeOfficerFunction = async (payload) => {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error('Your session has expired. Please sign out and sign in again.');
+    }
+
     const { data, error: fnError } = await supabase.functions.invoke('manage-csg-officers', {
       body: payload,
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
     });
 
     if (fnError) {
@@ -150,6 +172,48 @@ export default function ManageOfficers() {
       await loadOfficers();
     } catch (err) {
       showToast(err.message || 'Failed to create CSG officer account.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openEditOfficer = (officer) => {
+    setEditTarget(officer);
+    setEditForm({
+      full_name: officer.full_name || '',
+      position: officer.position || '',
+      department: officer.department || '',
+      must_change_password: Boolean(officer.must_change_password),
+    });
+  };
+
+  const handleSaveEditOfficer = async (e) => {
+    e.preventDefault();
+    if (!editTarget) return;
+
+    setSubmitting(true);
+    try {
+      await invokeOfficerFunction({
+        action: 'update_officer',
+        user_id: editTarget.id,
+        full_name: editForm.full_name.trim(),
+        position: editForm.position.trim(),
+        department: editForm.department.trim(),
+        must_change_password: Boolean(editForm.must_change_password),
+      });
+
+      await logActivity({
+        actor,
+        action: 'Updated Officer Profile',
+        module: 'Manage Officers',
+        description: `Updated details for ${editTarget.email || editTarget.full_name || editTarget.id} (${editForm.position.trim() || 'CSG Officer'}, ${editForm.department.trim() || 'No Dept'})`,
+      });
+
+      showToast('Officer profile updated.');
+      setEditTarget(null);
+      await loadOfficers();
+    } catch (err) {
+      showToast(err.message || 'Failed to update officer profile.');
     } finally {
       setSubmitting(false);
     }
@@ -365,6 +429,14 @@ export default function ManageOfficers() {
                         <Button
                           variant="secondary"
                           size="sm"
+                          onClick={() => openEditOfficer(officer)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => openChangePassword(officer)}
                         >
                           <KeyRound className="h-3.5 w-3.5" />
@@ -500,7 +572,70 @@ export default function ManageOfficers() {
         </form>
       </Modal>
 
-      {/* Modal 2: Direct Change Password (New Password + Confirm) */}
+      {/* Modal 2: Edit Officer Name, Position, Department */}
+      <Modal
+        open={Boolean(editTarget)}
+        title={`Edit Officer — ${editTarget?.full_name || editTarget?.email || 'Officer'}`}
+        onClose={() => setEditTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="edit-officer-form" disabled={submitting}>
+              {submitting ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </>
+        }
+      >
+        <form id="edit-officer-form" onSubmit={handleSaveEditOfficer} className="space-y-3">
+          <Input
+            label="Email Address"
+            id="edit-officer-email"
+            value={editTarget?.email || ''}
+            disabled
+          />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input
+              label="Full Name"
+              id="edit-officer-fullname"
+              required
+              value={editForm.full_name}
+              onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+              placeholder="Juan Dela Cruz"
+            />
+            <Input
+              label="Officer Position"
+              id="edit-officer-position"
+              value={editForm.position}
+              onChange={(e) => setEditForm({ ...editForm, position: e.target.value })}
+              placeholder="Secretary / Treasurer"
+            />
+          </div>
+
+          <Input
+            label="Department / Course"
+            id="edit-officer-department"
+            value={editForm.department}
+            onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+            placeholder="BSIT / College of Engineering"
+          />
+
+          <label className="flex items-center gap-2 pt-1 text-xs text-ink dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={editForm.must_change_password}
+              onChange={(e) =>
+                setEditForm({ ...editForm, must_change_password: e.target.checked })
+              }
+            />
+            Require officer to change password on next login
+          </label>
+        </form>
+      </Modal>
+
+      {/* Modal 3: Direct Change Password (New Password + Confirm) */}
       <Modal
         open={Boolean(passTarget)}
         title={`Change Password — ${passTarget?.full_name || passTarget?.email || 'Officer'}`}
@@ -567,7 +702,7 @@ export default function ManageOfficers() {
         </form>
       </Modal>
 
-      {/* Modal 3: Delete Confirmation */}
+      {/* Modal 4: Delete Confirmation */}
       <Modal
         open={Boolean(deleteTarget)}
         title="Confirm Delete Officer Profile"

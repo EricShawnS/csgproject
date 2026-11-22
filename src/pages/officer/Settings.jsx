@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Button, Card, Input, Select, Toast } from '../../components/ui';
@@ -14,16 +14,17 @@ const DEFAULT_PREFS = {
   systemNotif: true,
   appearance: 'light',
   density: 'comfortable',
-  language: 'English',
   timeFormat: '12',
 };
 
 export default function Settings() {
   const { user, profile, role, refreshProfile } = useAuth();
 
+  const [liveProfile, setLiveProfile] = useState(null);
   const [fullName, setFullName] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [syncingProfile, setSyncingProfile] = useState(false);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -43,9 +44,42 @@ export default function Settings() {
     setTimeout(() => setToast(''), 2600);
   };
 
+  const activeProfile = liveProfile || profile;
+
+  const fetchLatestProfile = useCallback(
+    async (showFeedback = false) => {
+      if (!user?.id) return;
+      if (showFeedback) setSyncingProfile(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && data) {
+          setLiveProfile(data);
+        }
+        if (typeof refreshProfile === 'function') {
+          await refreshProfile();
+        }
+        if (showFeedback) showToast('Profile synced.');
+      } catch {
+        if (showFeedback) showToast('Could not sync profile.');
+      } finally {
+        if (showFeedback) setSyncingProfile(false);
+      }
+    },
+    [user?.id, refreshProfile]
+  );
+
   useEffect(() => {
-    setFullName(profile?.full_name || 'CSG Officer');
-  }, [profile]);
+    fetchLatestProfile(false);
+  }, [fetchLatestProfile]);
+
+  useEffect(() => {
+    setFullName(activeProfile?.full_name || '');
+  }, [activeProfile]);
 
   const applyTheme = (mode) => {
     const isDark =
@@ -69,11 +103,14 @@ export default function Settings() {
     if (!user?.id || !fullName.trim()) return;
     setSavingProfile(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .update({ full_name: fullName.trim(), updated_at: new Date().toISOString() })
-        .eq('id', user.id);
+        .update({ full_name: fullName.trim() })
+        .eq('id', user.id)
+        .select('*')
+        .single();
       if (error) throw error;
+      if (data) setLiveProfile(data);
       if (typeof refreshProfile === 'function') {
         await refreshProfile();
       }
@@ -102,16 +139,17 @@ export default function Settings() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
 
-      // Clear the forced password-change flag if the officer just updated their password
-      await supabase
+      const { data: updated } = await supabase
         .from('profiles')
         .update({
           must_change_password: false,
           password_updated_at: nowIso,
-          updated_at: nowIso,
         })
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select('*')
+        .single();
 
+      if (updated) setLiveProfile(updated);
       if (typeof refreshProfile === 'function') {
         await refreshProfile();
       }
@@ -135,7 +173,7 @@ export default function Settings() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <Card title="Account Settings" subtitle="Update your personal information and account details">
+      <Card title="Account Settings" subtitle="View your assigned officer position and update your profile details">
         <form onSubmit={handleSaveProfile} className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
@@ -145,42 +183,53 @@ export default function Settings() {
                 value={fullName}
                 disabled={!editingProfile}
                 onChange={(e) => setFullName(e.target.value)}
+                placeholder="Officer Full Name"
               />
               <Input
                 label="Email"
                 id="off-email"
-                value={user?.email || profile?.email || 'officer@csg.com'}
+                value={user?.email || activeProfile?.email || 'officer@csg.com'}
                 disabled
               />
               <Input
-                label="Officer Position"
+                label="Position"
                 id="off-position"
-                value={profile?.position || 'CSG Officer'}
+                value={activeProfile?.position || 'CSG Officer'}
                 disabled
               />
               <Input
                 label="Department / Course"
                 id="off-department"
-                value={profile?.department || '—'}
+                value={activeProfile?.department || '—'}
                 disabled
               />
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="mt-5"
-              onClick={() => {
-                setFullName(profile?.full_name || 'CSG Officer');
-                setEditingProfile((prev) => !prev);
-              }}
-            >
-              {editingProfile ? 'Cancel' : 'Edit Profile'}
-            </Button>
+            <div className="mt-5 flex flex-col gap-1.5">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setFullName(activeProfile?.full_name || '');
+                  setEditingProfile((prev) => !prev);
+                }}
+              >
+                {editingProfile ? 'Cancel' : 'Edit Profile'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={syncingProfile}
+                onClick={() => fetchLatestProfile(true)}
+              >
+                {syncingProfile ? 'Syncing...' : 'Sync'}
+              </Button>
+            </div>
           </div>
           <div className="flex items-center justify-between pt-1">
             <span className="rounded-full border border-line bg-soft px-3 py-0.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
-              {role || profile?.role || 'Officer'}
+              {role || activeProfile?.role || 'officer'}
             </span>
             {editingProfile && (
               <Button type="submit" size="sm" disabled={savingProfile}>
@@ -270,20 +319,6 @@ export default function Settings() {
                 <option value="comfortable">Comfortable</option>
                 <option value="compact">Compact</option>
                 <option value="cozy">Cozy</option>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span>Language</span>
-            <div className="w-40">
-              <Select
-                id="off-lang"
-                value={prefs.language}
-                onChange={(e) => updatePref({ language: e.target.value })}
-              >
-                <option value="English">English</option>
-                <option value="Filipino">Filipino</option>
               </Select>
             </div>
           </div>
